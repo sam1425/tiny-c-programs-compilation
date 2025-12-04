@@ -17,24 +17,23 @@ int main(int argc, char *argv[])
 				 "c = Clear file \n");
 		return 1;
 	}
-	int return_value = 0;
-	msvsc_check(argc, argv);
-	check_error();
-	return return_value;
+	int status = msvsc_check(argc, argv);
+  if (status != 0)
+     return status;
+	return check_error();
 }
-
-
 
 
 int check_error()
 {
-printf("file:\n");
-    int return_value = system("cat something.txt");
-    if (return_value == -1)
-    {
-        perror("Error executing command");
-        return -1;  
-    }
+	printf("file:\n");
+ 	int return_value = system("cat something.txt");
+ 	if (return_value == -1)
+	{
+		perror("Error executing command");
+ 		return -1;  
+ 	}
+	return 0;
 }
 
 
