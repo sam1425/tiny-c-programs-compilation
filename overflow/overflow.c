@@ -8,4 +8,5 @@ int main(void)
 	float result = a / b;
 
 	printf("result: %f \n", result);
+	return 0;
 }

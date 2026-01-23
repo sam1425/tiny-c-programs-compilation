@@ -24,4 +24,5 @@ int main(void)
   }
 
   //printf("%s",sam);
+  return 0;
 }

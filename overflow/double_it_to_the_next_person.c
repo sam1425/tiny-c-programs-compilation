@@ -8,4 +8,5 @@ int main(void){
     getchar();
     num = num * 2;
   }
+  return 0;
 }
