@@ -126,7 +126,7 @@ int main(int argc, char* argv[])
         if(playerswitch) player_1_timer -= 1;
         else player_2_timer -= 1;
 
-        printf("P1: %d:%d | P2: %d:%d\n", player_1_timer / 60, player_1_timer %60 , player_2_timer / 60, player_2_timer % 60);
+        printf("P1: %d:%02d | P2: %d:%02d\n", player_1_timer / 60, player_1_timer %60 , player_2_timer / 60, player_2_timer % 60);
 
         if (player_1_timer <= 0|| player_2_timer <= 0 ) 
         {
