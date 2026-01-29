@@ -32,14 +32,6 @@ int kbhit() {
     return select(1, &fds, NULL, NULL, &tv);
 }
 
-
-
-
-enum TURN {
-  P1TURN,
-  P2TURN
-};
-
 int main(int argc, char* argv[])
 {
   if(argc < 2)
