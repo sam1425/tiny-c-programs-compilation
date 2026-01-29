@@ -6,6 +6,8 @@
 #include <sys/select.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
 
 void set_nonblocking(bool enable) {
     struct termios ttystate;
@@ -32,6 +34,19 @@ int kbhit() {
     return select(1, &fds, NULL, NULL, &tv);
 }
 
+bool is_valid_time(const char* str) {
+    int colon_count = 0;
+    for (int i = 0; str[i]; i++) {
+        if (str[i] == ':') {
+            colon_count++;
+            if (colon_count > 1) return false; 
+        } else if (!isdigit((unsigned char)str[i])) {
+            return false; 
+        }
+    }
+    return true;
+}
+
 int main(int argc, char* argv[])
 {
   if(argc < 2)
@@ -39,6 +54,33 @@ int main(int argc, char* argv[])
     printf("Usage: ./command <player timers> (in minutes)");
     return 1;
   }
+  if (!is_valid_time(argv[1])) {
+    printf("Invalid input. Only numbers and at most one ':' allowed.\n");
+    return 1;
+  }
+
+  char str[100];
+  strcpy(str, argv[1]);
+
+  int minutes;
+  int seconds;
+  int total_in_seconds;
+
+
+  char* colon = strchr(str, ':');
+  if(colon)
+  {
+    *colon = '\0';
+    minutes = atoi(str);
+    seconds = atoi(colon + 1);
+  }
+  else 
+  {
+    minutes = atoi(str);
+    seconds = 0;
+  }
+
+  total_in_seconds = minutes * 60 + seconds;
 
   printf("press s to start and space to change between players\n\n");
   printf("you can use Crl + c or q to quit\n");
@@ -47,10 +89,11 @@ int main(int argc, char* argv[])
 
   time_before = time(NULL);
 
-  long int player_1_timer = atoi(argv[1]) * 60;
-  long int player_2_timer = atoi(argv[1]) * 60;
 
-  bool Active = false;
+  long int player_1_timer = total_in_seconds;
+  long int player_2_timer = total_in_seconds;
+
+  bool Playing = false;
   bool playerswitch = true;
 
   for(;;)
@@ -60,12 +103,12 @@ int main(int argc, char* argv[])
 
       if (c == 'q') 
       {
-        Active = false;
+        Playing = false;
         break;
       }
       if (c == 's') 
       {
-        Active = true;
+        Playing = true;
         printf("game started\n\n");
       }
       if (c == ' ')
@@ -73,7 +116,7 @@ int main(int argc, char* argv[])
         playerswitch = !playerswitch;
       }
     }
-    if (Active)
+    if (Playing)
     {
 
       time_after = time(NULL);
@@ -83,7 +126,8 @@ int main(int argc, char* argv[])
         if(playerswitch) player_1_timer -= 1;
         else player_2_timer -= 1;
 
-        printf("P1: %ld | P2: %ld\n", player_1_timer, player_2_timer);
+        printf("P1: %d:%d | P2: %d:%d\n", player_1_timer / 60, player_1_timer %60 , player_2_timer / 60, player_2_timer % 60);
+
         if (player_1_timer <= 0|| player_2_timer <= 0 ) 
         {
             printf("countdown ended\n");
