@@ -47,10 +47,9 @@ bool is_valid_time(const char* str) {
     return true;
 }
 
-int main(int argc, char* argv[])
+int main(const int argc, char* argv[])
 {
-  if(argc < 2)
-  {
+  if(argc < 2){
     printf("Usage: ./command <player timers> (in minutes)");
     return 1;
   }
@@ -62,20 +61,18 @@ int main(int argc, char* argv[])
   char str[100];
   strcpy(str, argv[1]);
 
-  int minutes;
-  int seconds;
+  int minutes = 0;
+  int seconds = 0;
   int total_in_seconds;
 
 
   char* colon = strchr(str, ':');
-  if(colon)
-  {
+  if(colon) {
     *colon = '\0';
     minutes = atoi(str);
     seconds = atoi(colon + 1);
   }
-  else 
-  {
+  else {
     minutes = atoi(str);
     seconds = 0;
   }
@@ -101,35 +98,31 @@ int main(int argc, char* argv[])
     if (kbhit()) {
       char c = getchar();
 
-      if (c == 'q') 
-      {
+      if (c == 'q') {
         Playing = false;
         break;
       }
-      if (c == 's') 
-      {
+      if (c == 's') {
         Playing = true;
         printf("game started\n\n");
       }
-      if (c == ' ')
-      {
+      if (c == ' ') {
         playerswitch = !playerswitch;
       }
     }
-    if (Playing)
-    {
+    if (Playing) {
 
       time_after = time(NULL);
-      if (time_after - time_before >= 1){
+      if (time_after - time_before >= 1) {
         time_before = time_after;
 
         if(playerswitch) player_1_timer -= 1;
         else player_2_timer -= 1;
 
-        printf("P1: %d:%02d | P2: %d:%02d\n", player_1_timer / 60, player_1_timer %60 , player_2_timer / 60, player_2_timer % 60);
+        printf("P1: %d:%02d | P2: %d:%02d\n", player_1_timer / 60, player_1_timer %60 ,
+                                              player_2_timer / 60, player_2_timer % 60);
 
-        if (player_1_timer <= 0|| player_2_timer <= 0 ) 
-        {
+        if (player_1_timer <= 0|| player_2_timer <= 0 ) {
             printf("countdown ended\n");
             return 0;
         }

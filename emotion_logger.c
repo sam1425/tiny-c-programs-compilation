@@ -19,6 +19,16 @@ void trim_newline(char *s) {
     }
 }
 
+
+bool CheckIfEmpty(char emotion[64], char note[256])
+{
+    if (emotion[0] == '\0' || note[0] == '\0') {
+        printf("No input. Nothing saved.\n");
+        return true;
+    }
+    return false;
+}
+
 int main() {
     size_t upper_bound = (sizeof(phrases) / sizeof(phrases[0]));
     // random number(0 to upper_bound)
@@ -30,17 +40,16 @@ int main() {
     printf("Emotion Loggin tool\n");
 
     printf("\nWhat are you feeling right now?\n > ");
+
     fgets(emotion, sizeof(emotion), stdin);
     trim_newline(emotion);
+    if (CheckIfEmpty(emotion, note))return 1;
 
     printf("\nWrite about why you feel this way:\n > ");
-    fgets(note, sizeof(note), stdin);
 
+    fgets(note, sizeof(note), stdin);
     trim_newline(note);
-    if (emotion[0] == '\0' || note[0] == '\0') {
-        printf("No input. Nothing saved.\n");
-        return 0;
-    }
+    if (CheckIfEmpty(emotion, note))return 1;
 
     FILE *file = fopen("emotions.log", "a");
     if (!file) {
@@ -49,7 +58,7 @@ int main() {
     }
 
     time_t now = time(NULL);
-    fprintf(file, "\n[%s] Emotion: %sNote: %s",
+    fprintf(file, "\n[%s] \nEmotion: %s\nNote: %s",
             ctime(&now), emotion, note);
 
     fclose(file);

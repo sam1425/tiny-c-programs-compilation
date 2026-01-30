@@ -9,7 +9,8 @@ int main()
     scanf("%d", &user);
     if (user <= 1) {
         is_prime = 0;
-    } else {
+    } 
+    else {
         for (int i = 2; i <= user / 2; i++) {
             if (user % i == 0) {
                 is_prime = 0;
