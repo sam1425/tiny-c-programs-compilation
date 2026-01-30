@@ -102,7 +102,7 @@ int main(const int argc, char* argv[])
         Playing = false;
         break;
       }
-      if (c == 's') {
+      if (c == 's' && !Playing) {
         Playing = true;
         printf("game started\n\n");
       }
