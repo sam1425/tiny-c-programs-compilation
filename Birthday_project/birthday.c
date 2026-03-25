@@ -19,148 +19,89 @@ typedef struct {
 } birthday;
 
 
-int main()
-{
-   //#ifdef ME
-   //printf("A simple program for cheking birthdays made by %s.\n", ME);
-   //#endif
-   parse_csv();
 
-   return 0;
+int get_day_of_year(int m, int d) {
+    static const int days[] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
+    return days[m - 1] + d;
 }
 
-int day_of_year(int month, int day) 
-{
-    int days_in_months[] = {
-        0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
-    };
-
-    for (int i = 1; i < month; i++) {
-        day += days_in_months[i];
-    }
-    return day;
-}
-
-void find_closest_birthday(birthday *persons, int count) 
-    {
+void display_closest(birthday *persons, int count) {
     time_t now = time(NULL);
-    struct tm *lt = localtime(&now);
+    struct tm lt = *localtime(&now);
+    int today_rel = get_day_of_year(lt.tm_mon + 1, lt.tm_mday);
 
-    int today = day_of_year(lt->tm_mon + 1, lt->tm_mday);
-
-    int closest_index = 0;
-    int closest_distance = 9999;
-    bool found = false;
+    int best_idx = -1;
+    int min_diff = 366;
 
     for (int i = 0; i < count; i++) {
-        int month, day, year;
+        int d, m, y;
+        if (sscanf(persons[i].birthdate, "%d/%d/%d", &d, &m, &y) != 3) continue;
 
-        if (sscanf(persons[i].birthdate, "%d/%d/%d", &day, &month, &year) != 3)
-            continue;
+        int dob_rel = get_day_of_year(m, d);
+        int diff = dob_rel - today_rel;
+        if (diff < 0) diff += 365; 
 
-        int dob = day_of_year(month, day);
-
-        int diff = dob - today;
-        if (diff < 0) diff += 365;  // wrap around (birthday already passed)
-
-        if (!found || diff < closest_distance) {
-            closest_distance = diff;
-            closest_index = i;
-            found = true;
+        if (diff < min_diff) {
+            min_diff = diff;
+            best_idx = i;
         }
     }
 
-    if (found) {
-        // Parse the birthday date
-        int month, day, year;
-        sscanf(persons[closest_index].birthdate, "%d/%d/%d", &day, &month, &year);
-        
-        // Create target date
-        struct tm target_tm = {0};
-        target_tm.tm_year = lt->tm_year;
-        target_tm.tm_mon = month - 1;
-        target_tm.tm_mday = day;
-        mktime(&target_tm);
-        
-        // If birthday already passed this year, use next year
-        if (day_of_year(month, day) < today) {
-            target_tm.tm_year++;
-            mktime(&target_tm);
+    if (best_idx != -1) {
+        int d, m, y;
+        sscanf(persons[best_idx].birthdate, "%d/%d/%d", &d, &m, &y);
+
+        struct tm target = lt;
+        target.tm_mon = m - 1;
+        target.tm_mday = d;
+        if (get_day_of_year(m, d) < today_rel) target.tm_year++;
+        mktime(&target);
+
+        int out_m, out_d;
+        diff_months_days(lt, target, &out_m, &out_d);
+
+        center("Upcoming Birthday");
+        center(persons[best_idx].name,"'s");
+
+        char buf[64];
+        if (out_m == 1) {
+            snprintf(buf, sizeof(buf), "%d month and %d days remaining", out_m, out_d);
+        } else if (out_m > 1) {
+            snprintf(buf, sizeof(buf), "%d months and %d days remaining", out_m, out_d);
+        } else if (out_d == 1){
+            snprintf(buf, sizeof(buf), "%d day remaining", out_d);
+        } else if (out_d > 1){
+            snprintf(buf, sizeof(buf), "%d days remaining", out_d);
+        } else {
+            snprintf(buf, sizeof(buf), "Is  Today");
         }
-        
-        // Calculate months and days
-        int months, days;
-        diff_months_days(*lt, target_tm, &months, &days);
-        
-        center("Closest birthday");
-        center((persons[closest_index].name));
-        center((persons[closest_index].birthdate));
-        char stringbuffer[32];
-        snprintf(stringbuffer, sizeof(stringbuffer), "%d days left", closest_distance);
-        center(stringbuffer);
-        snprintf(stringbuffer, sizeof(stringbuffer), "%d months %d days\n", months, days);
-        center(stringbuffer);
+        center(buf);
     }
 }
 
-int count_lines(FILE *fp) {
-    int lines = 0;
-    char buffer[256];
-    while (fgets(buffer, sizeof(buffer), fp)) {
-        lines++;
+int main() {
+    //parse csv
+    FILE *fp = fopen("/home/c0mplex/.scripts/dictionary.csv", "r");
+    if (!fp) return 1;
+
+    birthday people[100];
+    char line[256];
+    int count = 0;
+
+    fgets(line, sizeof(line), fp);
+    while (fgets(line, sizeof(line), fp) && count < 100) {
+        char *id = strtok(line, ",");
+        char *name = strtok(NULL, ",");
+        char *date = strtok(NULL, "\n");
+
+        if (name && date) {
+            strncpy(people[count].name, name, 31);
+            strncpy(people[count].birthdate, date, 63);
+            count++;
+        }
     }
-    return lines;
-}
+    fclose(fp);
 
-
-int parse_csv(){
-   FILE *dictionary = fopen("dictionary.csv", "r");
-   if (!dictionary) {
-   perror("Could not open dictionary.csv");
-   return -1;
-   }
-
-   char buffer[256];
-   int TOTAL_LINES = count_lines(dictionary);
-   if (TOTAL_LINES < 2) {
-      fclose(dictionary);
-      return 0;
-   }
-
-   int MAX_PEOPLE = TOTAL_LINES - 1;
-
-   rewind(dictionary);
-   fgets(buffer, sizeof(buffer), dictionary);
-
-   birthday *person = calloc(MAX_PEOPLE, sizeof(birthday));
-   if (!person) {
-      fclose(dictionary);
-      return -1;
-   }
-
-   int i = 0;
-   while (fgets(buffer, sizeof(buffer), dictionary) && i < MAX_PEOPLE) {
-      char* token = strtok(buffer,",");
-      if (token) strncpy(person[i].id,token,sizeof(person[i].id));
-      token = strtok(NULL, ",");
-      if (token) strncpy(person[i].name,token,sizeof(person[i].name));
-      token = strtok(NULL, "\n");
-      if (token) strncpy(person[i].birthdate,token,sizeof(person[i].birthdate));
-
-      //printf("%s, Name: %s, Birth: %s\n", person[i].id, person[i].name, person[i].birthdate);
-
-      //if (sscanf(person[i].birthdate, "%d/%d/%d", &day, &month, &year) == 3) {
-      //printf("Month: %d\nDay: %d\nYear: %d\n", month, day, year);
-      //} else {
-         //printf("Invalid date format.\n");
-      //}
-
-
-      i++;
-   }
-
-   find_closest_birthday(person, i);
-   fclose(dictionary);
-   free(person);
-   return 0;
+    display_closest(people, count);
+    return 0;
 }

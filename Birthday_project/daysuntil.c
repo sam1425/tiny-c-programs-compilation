@@ -10,28 +10,27 @@ void add_months(struct tm *date, int months) {
 
 // calculates months and days between two dates
 void diff_months_days(struct tm start, struct tm end, int *out_months, int *out_days) {
+    start.tm_hour = start.tm_min = start.tm_sec = 0;
+    end.tm_hour = end.tm_min = end.tm_sec = 0;
+    
     int months = 0;
-
     struct tm temp = start;
 
     while (1) {
         struct tm next = temp;
-        add_months(&next, 1);
+        next.tm_mon += 1;
+        mktime(&next);
 
-        if (mktime(&next) > mktime(&end))
+        if (difftime(mktime(&next), mktime(&end)) > 0)
             break;
 
         temp = next;
         months++;
     }
 
-    time_t t_temp = mktime(&temp);
-    time_t t_end  = mktime(&end);
-
-    int days = (t_end - t_temp) / 86400;
-
+    double seconds = difftime(mktime(&end), mktime(&temp));
     *out_months = months;
-    *out_days = days;
+    *out_days = (int)(seconds / 86400 + 0.5);
 }
 
 void countdown(int year, int month, int day) {
