@@ -9,17 +9,17 @@
  *
  * Output (one line, ANSI coloured, empty if not in a git repo)
  * ─────────────────────────────────────────────────────────────────
- *   ◉  yellow  staged changes ready to commit          (priority 1)
- *   ◎  purple  unstaged modifications or untracked     (priority 2)
- *   ●⇡ aqua    clean tree but ahead of upstream        (priority 3)
- *   ●  green   fully clean                             (priority 4)
+ *   🔘  yellow  staged changes ready to commit          (priority 1)
+ *   ꩜  orange  unstaged modifications or untracked     (priority 2)
+ *   ⬤↑  aqua    clean tree but ahead of upstream        (priority 3)
+ *   ⬤  green   fully clean                             (priority 4)
  * ─────────────────────────────────────────────────────────────────
  *   alternative
  *   ∅ 〇 ◯ ◯ ◎ ○⚬ ⊙ ◍ ☢ ❂
- *   ◯ ❍ ⬤ ☯ 𖣠 ⚆ ⚇ ⚈ ⚉ ⭕
- *   ⬤ ⊗ ⚫꩜ 🌀 ⚪🔴🟡🔵
- *   ✦	✖	▲	✔
- *   ◆	◈	◇⇡	◇
+ *   ◯  ⬤ ☯ 𖣠 ⚆ ⚇ ⚈ ⚉ ⭕
+ *   ⬤ ⊗ ⚫ 🌀 ⚪🔴🟡🔵
+ *   ✦	✖	▲	✔ ⬤
+ *   ◆	◈	◇⇡	◇ ⬤ ●
  *   ●	⬢	○⇡ ■ ❖ ◈ ⌬
  * Build
  * ─────────────────────────────────────────────────────────────────
@@ -80,12 +80,8 @@ int main(int argc, char *argv[])
 
     /* ── 2. check working tree and index ─────────────────────────── */
     git_status_options opts;
-    /*opts.version = 1;  GIT_STATUS_OPTIONS_VERSION
-    opts.show    = GIT_STATUS_SHOW_INDEX_AND_WORKDIR;
 
-    opts.flags   = GIT_STATUS_OPT_INCLUDE_UNTRACKED
-                 | GIT_STATUS_OPT_EXCLUDE_SUBMODULES;*/
-
+    memset(&opts, 0, sizeof(opts));
 
     opts.flags = GIT_STATUS_OPT_INCLUDE_UNTRACKED        |
                  GIT_STATUS_OPT_RENAMES_HEAD_TO_INDEX    |
@@ -96,7 +92,6 @@ int main(int argc, char *argv[])
     opts.version = GIT_STATUS_OPTIONS_VERSION;
     opts.show    = GIT_STATUS_SHOW_INDEX_AND_WORKDIR;
 
-    memset(&opts, 0, sizeof(opts));
 
     int staged = 0, dirty = 0;
 
@@ -127,11 +122,11 @@ int main(int argc, char *argv[])
 
     /* ── 3. priority decision ────────────────────────────────────── */
     if (staged) {
-        printf(C_YELLOW "꩜ " C_RESET);
+        printf(C_YELLOW "🔘 " C_RESET);
         goto done;
     }
     if (dirty) {
-        printf(C_ORANGE "〇" C_RESET);
+        printf(C_ORANGE "꩜ " C_RESET);
         goto done;
     }
 
@@ -154,7 +149,7 @@ int main(int argc, char *argv[])
         if (head)     git_reference_free(head);
 
         if (ahead > 0)
-            printf(C_AQUA  "⬤↑ " C_RESET);
+            printf(C_AQUA  "⬤↑" C_RESET);
         else
             printf(C_GREEN "⬤ " C_RESET);
     }

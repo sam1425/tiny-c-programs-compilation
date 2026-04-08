@@ -62,9 +62,9 @@ int customMain() {
   :
       : "rax", "rdi"
       );
-      puts("not suprised yet?")
-      usleep(500000)
-      puts("I give up :C ")
+      puts("not suprised yet?");
+      usleep(500000);
+      puts("I give up :C ");
   }
   else if(input == 'N'|| input == 'n')
   {
