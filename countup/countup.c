@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+struct termios orig_termios;
 
 void disable_raw_mode();
 void enable_raw_mode();
@@ -31,7 +32,6 @@ int main() {
     return 0;
 }
 
-struct termios orig_termios;
 
 void disable_raw_mode() {
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
@@ -42,7 +42,7 @@ void enable_raw_mode() {
     atexit(disable_raw_mode);
 
     struct termios raw = orig_termios;
-    raw.c_lflag &= ~(ECHO | ICANON); // Turn off echo and canonical mode
+    raw.c_lflag &= ~(ECHO | ICANON);
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
 }
 
@@ -68,6 +68,7 @@ void draw_centered_number(int count) {
     int y = rows / 2;
 
     clear_screen();
-    printf("\033[%d;%dH%s", y, x, buffer); // Move cursor and print
+    printf("\033[%d;%dH%s", y, x, buffer);
+    printf("\033[?25l");
     fflush(stdout);
 }
