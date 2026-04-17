@@ -22,13 +22,12 @@ int main(int argc, char *argv[]) {
     const char *path = (argc >= 2) ? argv[1] : getenv("PWD");
     if (!path) return 0;
 
-    /* 1. Fast Upward Discovery for .git */
+    /* 1. Fast Upward Discovery for .git (Avoids running libgit2 outside of repos) */
     char cur[4096];
     struct stat st;
     snprintf(cur, sizeof(cur), "%s", path);
-    
     while (1) {
-        char gitdir[4112]; /* path + /.git */
+        char gitdir[4112];
         snprintf(gitdir, sizeof(gitdir), "%s/.git", cur);
         if (stat(gitdir, &st) == 0) break;
         char *last = strrchr(cur, '/');
@@ -36,7 +35,15 @@ int main(int argc, char *argv[]) {
         *last = '\0';
     }
 
+    /* 2. LIBGIT2 INIT & CONFIG BYPASS 
+     * Shaves ~2-5ms by not searching for system-wide/global configs.
+     */
     git_libgit2_init();
+    git_libgit2_opts(GIT_OPT_SET_SEARCH_PATH, GIT_CONFIG_LEVEL_SYSTEM, NULL);
+    git_libgit2_opts(GIT_OPT_SET_SEARCH_PATH, GIT_CONFIG_LEVEL_GLOBAL, NULL);
+    git_libgit2_opts(GIT_OPT_SET_SEARCH_PATH, GIT_CONFIG_LEVEL_XDG, NULL);
+    git_libgit2_opts(GIT_OPT_SET_SEARCH_PATH, GIT_CONFIG_LEVEL_PROGRAMDATA, NULL);
+
     git_repository *repo = NULL;
     if (git_repository_open_ext(&repo, path, GIT_REPOSITORY_OPEN_FROM_ENV, NULL) != 0) _exit(0);
 
@@ -64,11 +71,15 @@ int main(int argc, char *argv[]) {
         if (found) { write(1, C_YELLOW "🔘 " C_RESET, sizeof(C_YELLOW "🔘 " C_RESET)-1); _exit(0); }
     }
 
-    /* Workdir & Untracked (No Recursion) */
+    /* Workdir & Untracked (No Recursion - CRITICAL for speed) */
     {
         git_diff_options opts;
         git_diff_options_init(&opts, GIT_DIFF_OPTIONS_VERSION);
-        opts.flags = GIT_DIFF_INCLUDE_UNTRACKED | GIT_DIFF_DISABLE_PATHSPEC_MATCH | GIT_DIFF_SKIP_BINARY_CHECK | GIT_DIFF_IGNORE_SUBMODULES;
+        /* Ensure RECURSE_UNTRACKED_DIRS is NOT set to avoid long scans */
+        opts.flags = GIT_DIFF_INCLUDE_UNTRACKED | 
+                     GIT_DIFF_DISABLE_PATHSPEC_MATCH | 
+                     GIT_DIFF_SKIP_BINARY_CHECK | 
+                     GIT_DIFF_IGNORE_SUBMODULES;
         
         git_diff *diff = NULL;
         if (git_diff_index_to_workdir(&diff, repo, NULL, &opts) == 0) {
