@@ -1,0 +1,4 @@
+#! /bin/execlineb -P
+foreground { s6-setsid -g }
+cd /etc/omnisearch
+exec s6-setuidgid omnisearch /usr/bin/omnisearch
