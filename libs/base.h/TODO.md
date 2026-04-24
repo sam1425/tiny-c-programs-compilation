@@ -1,0 +1,44 @@
+# TODO:
+- [x] Return `errno_t` and `LogError` rather than asserting
+- [x] Add version at the top of the file and add proper license
+- [x] More general unix functions
+- [x] Create enums of errors:
+    - [x] `GeneralError`
+    - [x] `FileStatsError`
+    - [x] `FileReadError`
+    - [x] `FileAddError`
+    - [x] `FileWriteError`
+    - [x] `FileDeleteError`
+    - [x] `FileRenameError`
+- [x] Add equivalent FileSystem implementation for linux
+- [x] Assert `Malloc` and `ArenaAlloc`, use `Malloc` and `Free`
+- [x] Add a `StrSplitLine` helper function that works for `\r\n` and for `\n`
+- [x] Add `ListDir` function
+- [x] Create an `.ini` parser
+- [x] Test on `Clang` and `GCC` on linux and windows
+- [x] Add `TCC` support
+- [x] Add `StrBuilder`
+- [x] Function to reserve some memory `VecCreate()`
+- [x] Add better error logging, format `$function$: failed $path$ (or whatever params are passed), $error$` specially for file functions
+- [x] Add some basic tests for each function, and execute them on each PR
+- [x] Make GNU extensions work in both MSVC and Clang
+    - [x] Vectors
+    - [x] Math functions
+- [x] Test `MSVC` on windows
+- [x] Move everything to `typedef enum` returns, for type "safety"
+- [x] Platforms
+    - [x] PLATFORM_DRM
+    - [x] `GetPlatform()` should return enum of platforms
+    - [x] `isLinux()` should be on base
+    - [x] `isWindows()` as well
+    - [x] `isFreeBSD()` as well
+    - [x] add `isAndroid()`
+    - [x] add `isMacOs()`
+    - [x] add `isEmscripten()`
+- [x] Move private functions to `__base_` and snake_case
+- [ ] Static `MAX_PATH` is fragile:
+    - [ ] https://eklitzke.org/path-max-is-tricky (GNU extension `char *get_current_dir_name()` dynamic length)
+    - [ ] `wide paths` UTF16 on windows
+- [ ] `System()` to run commands is fragile
+    - [ ] Depends on the OS shell syntax which is not portable. It should use platform primitives such as CreateProcess on windows and fork+exec (or posix_spawn) on unix.
+- [ ] Add `StrIncludes`, `StrIncludesStart`, `StrIncludesEnd`
