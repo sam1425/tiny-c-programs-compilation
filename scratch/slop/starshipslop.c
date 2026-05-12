@@ -12,32 +12,36 @@
 #define C_ORANGE "\033[1;38;2;254;128;25m"   /* Gruvbox Orange #fe8019 */
 #define C_RESET  "\033[0m"
 
-static int diff_cb(const git_diff_delta *delta, float progress, void *payload) {
-    (void)delta; (void)progress;
-    *(int *)payload = 1;
-    return 1; /* abort immediately on first change */
+static int status_cb(const char *path, unsigned int status_flags, void *payload) {
+    (void)path;
+    *(unsigned int *)payload = status_flags;
+    return 1; /* Abort on first change found */
 }
 
 int main(int argc, char *argv[]) {
     const char *path = (argc >= 2) ? argv[1] : getenv("PWD");
     if (!path) return 0;
 
-    /* 1. Fast Upward Discovery for .git (Avoids running libgit2 outside of repos) */
+    /* 1. Fast Upward Discovery for .git */
     char cur[4096];
     struct stat st;
     snprintf(cur, sizeof(cur), "%s", path);
+    int found_git = 0;
     while (1) {
         char gitdir[4112];
         snprintf(gitdir, sizeof(gitdir), "%s/.git", cur);
-        if (stat(gitdir, &st) == 0) break;
+        if (stat(gitdir, &st) == 0 && S_ISDIR(st.st_mode)) {
+            found_git = 1;
+            break;
+        }
         char *last = strrchr(cur, '/');
         if (!last || last == cur) _exit(0);
         *last = '\0';
     }
 
-    /* 2. LIBGIT2 INIT & CONFIG BYPASS 
-     * Shaves ~2-5ms by not searching for system-wide/global configs.
-     */
+    if (!found_git) _exit(0);
+
+    /* 2. LIBGIT2 INIT & CONFIG BYPASS */
     git_libgit2_init();
     git_libgit2_opts(GIT_OPT_SET_SEARCH_PATH, GIT_CONFIG_LEVEL_SYSTEM, NULL);
     git_libgit2_opts(GIT_OPT_SET_SEARCH_PATH, GIT_CONFIG_LEVEL_GLOBAL, NULL);
@@ -45,51 +49,31 @@ int main(int argc, char *argv[]) {
     git_libgit2_opts(GIT_OPT_SET_SEARCH_PATH, GIT_CONFIG_LEVEL_PROGRAMDATA, NULL);
 
     git_repository *repo = NULL;
-    if (git_repository_open_ext(&repo, path, GIT_REPOSITORY_OPEN_FROM_ENV, NULL) != 0) _exit(0);
+    /* Use the discovered path to avoid re-searching */
+    if (git_repository_open_ext(&repo, cur, GIT_REPOSITORY_OPEN_NO_SEARCH, NULL) != 0) _exit(0);
 
-    int found = 0;
-    /* Staged */
-    {
-        git_tree *head_tree = NULL;
-        git_reference *head_ref = NULL;
-        if (git_repository_head(&head_ref, repo) == 0) {
-            git_object *head_obj = NULL;
-            if (git_reference_peel(&head_obj, head_ref, GIT_OBJECT_TREE) == 0) head_tree = (git_tree *)head_obj;
-            git_reference_free(head_ref);
-        }
-        
-        git_diff_options opts;
-        git_diff_options_init(&opts, GIT_DIFF_OPTIONS_VERSION);
-        opts.flags = GIT_DIFF_DISABLE_PATHSPEC_MATCH | GIT_DIFF_SKIP_BINARY_CHECK | GIT_DIFF_IGNORE_SUBMODULES;
-        
-        git_diff *diff = NULL;
-        if (git_diff_tree_to_index(&diff, repo, head_tree, NULL, &opts) == 0) {
-            git_diff_foreach(diff, diff_cb, NULL, NULL, NULL, &found);
-            git_diff_free(diff);
-        }
-        if (head_tree) git_tree_free(head_tree);
-        if (found) { write(1, C_YELLOW "🔘 " C_RESET, sizeof(C_YELLOW "🔘 " C_RESET)-1); _exit(0); }
+    /* 3. Status Scan (Early Exit) */
+    unsigned int status = 0;
+    git_status_options s_opts = GIT_STATUS_OPTIONS_INIT;
+    s_opts.show = GIT_STATUS_SHOW_INDEX_AND_WORKDIR;
+    s_opts.flags = GIT_STATUS_OPT_INCLUDE_UNTRACKED | 
+                   GIT_STATUS_OPT_RENAMES_HEAD_TO_INDEX |
+                   GIT_STATUS_OPT_EXCLUDE_SUBMODULES |
+                   GIT_STATUS_OPT_NO_REFRESH;
+    
+    git_status_foreach_ext(repo, &s_opts, status_cb, &status);
+
+    if (status & (GIT_STATUS_INDEX_NEW | GIT_STATUS_INDEX_MODIFIED | GIT_STATUS_INDEX_DELETED | GIT_STATUS_INDEX_RENAMED | GIT_STATUS_INDEX_TYPECHANGE)) {
+        write(1, C_YELLOW "🔘 " C_RESET, sizeof(C_YELLOW "🔘 " C_RESET)-1);
+        _exit(0);
+    }
+    
+    if (status & (GIT_STATUS_WT_NEW | GIT_STATUS_WT_MODIFIED | GIT_STATUS_WT_DELETED | GIT_STATUS_WT_TYPECHANGE | GIT_STATUS_WT_RENAMED)) {
+        write(1, C_ORANGE "꩜ " C_RESET, sizeof(C_ORANGE "꩜ " C_RESET)-1);
+        _exit(0);
     }
 
-    /* Workdir & Untracked (No Recursion - CRITICAL for speed) */
-    {
-        git_diff_options opts;
-        git_diff_options_init(&opts, GIT_DIFF_OPTIONS_VERSION);
-        /* Ensure RECURSE_UNTRACKED_DIRS is NOT set to avoid long scans */
-        opts.flags = GIT_DIFF_INCLUDE_UNTRACKED | 
-                     GIT_DIFF_DISABLE_PATHSPEC_MATCH | 
-                     GIT_DIFF_SKIP_BINARY_CHECK | 
-                     GIT_DIFF_IGNORE_SUBMODULES;
-        
-        git_diff *diff = NULL;
-        if (git_diff_index_to_workdir(&diff, repo, NULL, &opts) == 0) {
-            git_diff_foreach(diff, diff_cb, NULL, NULL, NULL, &found);
-            git_diff_free(diff);
-        }
-        if (found) { write(1, C_ORANGE "꩜ " C_RESET, sizeof(C_ORANGE "꩜ " C_RESET)-1); _exit(0); }
-    }
-
-    /* Ahead/Behind (Fast Path) */
+    /* 4. Ahead/Behind (Only if clean) */
     {
         git_reference *head = NULL;
         if (git_repository_head(&head, repo) == 0) {
@@ -98,8 +82,10 @@ int main(int argc, char *argv[]) {
                 const git_oid *h = git_reference_target(head), *u = git_reference_target(upstream);
                 if (h && u && git_oid_cmp(h, u) != 0) {
                     size_t a = 0, b = 0;
-                    git_graph_ahead_behind(&a, &b, repo, h, u);
-                    if (a > 0) { write(1, C_AQUA "⬤↑" C_RESET, sizeof(C_AQUA "⬤↑" C_RESET)-1); _exit(0); }
+                    if (git_graph_ahead_behind(&a, &b, repo, h, u) == 0 && a > 0) {
+                        write(1, C_AQUA "⬤↑" C_RESET, sizeof(C_AQUA "⬤↑" C_RESET)-1);
+                        _exit(0);
+                    }
                 }
                 git_reference_free(upstream);
             }
