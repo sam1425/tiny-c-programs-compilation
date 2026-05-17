@@ -221,14 +221,12 @@ void handle_normal(Editor *ed,char c){
 
 void handle_visual(Editor *ed, char c) {
     switch (c) {
-    // --- cancel ---
-    case 27:  // ESC
+    case 27:
     case 'v':
         ed->state = NORMAL;
         printf(ed->cursors[0]);
         break;
 
-    // --- movement: same logic as normal, but extend selection ---
 case 'h':
     if (ed->cursor_offset > 0) {
         if (rope_char_at(ed->rope.root, ed->cursor_offset - 1) != '\n') {
