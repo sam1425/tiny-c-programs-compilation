@@ -331,9 +331,9 @@ proc main() =
 
   var wmName = "boomer"
   var wmClass = "Boomer"
-  var hints = XClassHint(res_name: wmName, res_class: wmClass)
+  var hints = XClassHint(res_name: cstring(wmName), res_class: cstring(wmClass))
 
-  discard XStoreName(display, win, wmName)
+  discard XStoreName(display, win, cstring(wmName))
   discard XSetClassHint(display, win, addr(hints))
 
   var wmDeleteMessage = XInternAtom(
@@ -428,7 +428,7 @@ proc main() =
         Mouse(curr: pos, prev: pos)
     flashlight = Flashlight(
       isEnabled: false,
-      radius: 200.0)
+      radius: 100.0)
 
 
   let dt = 1.0 / rate.float
@@ -450,14 +450,14 @@ proc main() =
 
       proc scrollUp() =
         if (xev.xkey.state and ControlMask) > 0.uint32 and flashlight.isEnabled:
-          flashlight.deltaRadius += INITIAL_FL_DELTA_RADIUS
+          flashlight.deltaRadius -= INITIAL_FL_DELTA_RADIUS
         else:
           camera.deltaScale += config.scrollSpeed
           camera.scalePivot = mouse.curr
 
       proc scrollDown() =
         if (xev.xkey.state and ControlMask) > 0.uint32 and flashlight.isEnabled:
-          flashlight.deltaRadius -= INITIAL_FL_DELTA_RADIUS
+          flashlight.deltaRadius += INITIAL_FL_DELTA_RADIUS
         else:
           camera.deltaScale -= config.scrollSpeed
           camera.scalePivot = mouse.curr
@@ -516,9 +516,14 @@ proc main() =
               echo "------------------------------"
 
         of XK_f:
-          flashlight.isEnabled = not flashlight.isEnabled
+          flashlight.isEnabled = true
+          #flashlight.isEnabled = not flashlight.isEnabled
         else:
           discard
+      of KeyRelease:
+        let key = XLookupKeysym(cast[PXKeyEvent](xev.addr), 0)
+        if key == XK_f:
+           flashlight.isEnabled = false
 
       of ButtonPress:
         case xev.xbutton.button
