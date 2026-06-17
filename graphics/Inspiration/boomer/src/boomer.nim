@@ -85,6 +85,7 @@ type Flashlight = object
   isEnabled: bool
   shadow: float32
   radius: float32
+  targetRadius: float32
   deltaRadius: float32
 
 const
@@ -92,14 +93,17 @@ const
   FL_DELTA_RADIUS_DECELERATION = 10.0
 
 proc update(flashlight: var Flashlight, dt: float32) =
-  if abs(flashlight.deltaRadius) > 1.0:
-    flashlight.radius = max(0.0, flashlight.radius + flashlight.deltaRadius * dt)
+  if abs(flashlight.deltaRadius) > 1.0'f32:
+    flashlight.targetRadius = max(10.0'f32, flashlight.targetRadius + flashlight.deltaRadius * dt)
     flashlight.deltaRadius -= flashlight.deltaRadius * FL_DELTA_RADIUS_DECELERATION * dt
 
   if flashlight.isEnabled:
-    flashlight.shadow = min(flashlight.shadow + 6.0 * dt, 0.8)
+    flashlight.shadow = min(flashlight.shadow + 6.0'f32 * dt, 0.8'f32)
+    flashlight.radius += (flashlight.targetRadius - flashlight.radius) * (1.0'f32 - exp(-15.0'f32 * dt))
   else:
-    flashlight.shadow = max(flashlight.shadow - 6.0 * dt, 0.0)
+    flashlight.shadow = max(flashlight.shadow - 6.0'f32 * dt, 0.0'f32)
+    flashlight.radius += (0.0'f32 - flashlight.radius) * (1.0'f32 - exp(-15.0'f32 * dt))
+
 
 type
   UniformLocations = object
@@ -110,6 +114,7 @@ type
     cursorPos: GLint
     flShadow: GLint
     flRadius: GLint
+    laserEnabled: GLint
 
 proc getUniformLocations(shader: GLuint): UniformLocations =
   result.cameraPos = glGetUniformLocation(shader, "cameraPos".cstring)
@@ -119,10 +124,11 @@ proc getUniformLocations(shader: GLuint): UniformLocations =
   result.cursorPos = glGetUniformLocation(shader, "cursorPos".cstring)
   result.flShadow = glGetUniformLocation(shader, "flShadow".cstring)
   result.flRadius = glGetUniformLocation(shader, "flRadius".cstring)
+  result.laserEnabled = glGetUniformLocation(shader, "laserEnabled".cstring)
 
 proc draw(screenshot: PXImage, camera: Camera, shader, vao, texture: GLuint,
           windowSize: Vec2f, mouse: Mouse, flashlight: Flashlight,
-          locs: UniformLocations) =
+          locs: UniformLocations, laserEnabled: bool) =
   glClearColor(0.1, 0.1, 0.1, 1.0)
   glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
 
@@ -135,9 +141,11 @@ proc draw(screenshot: PXImage, camera: Camera, shader, vao, texture: GLuint,
   glUniform2f(locs.cursorPos, mouse.curr.x.float32, mouse.curr.y.float32)
   glUniform1f(locs.flShadow, flashlight.shadow)
   glUniform1f(locs.flRadius, flashlight.radius)
+  glUniform1i(locs.laserEnabled, if laserEnabled: 1 else: 0)
 
   glBindVertexArray(vao)
   glDrawElements(GL_TRIANGLES, count = 6, GL_UNSIGNED_INT, indices = nil)
+
 
 
 proc getCursorPosition(display: PDisplay): Vec2f =
@@ -308,7 +316,8 @@ proc main() =
                                  vi.visual, AllocNone)
   swa.event_mask = ButtonPressMask or ButtonReleaseMask or
                    KeyPressMask or KeyReleaseMask or
-                   PointerMotionMask or ExposureMask or ClientMessage
+                   PointerMotionMask or ExposureMask or ClientMessage or
+                   FocusChangeMask or StructureNotifyMask
   if not windowed:
     swa.override_redirect = 1
     swa.save_under = 1
@@ -325,6 +334,12 @@ proc main() =
     CWColormap or CWEventMask or CWOverrideRedirect or CWSaveUnder, addr swa)
 
   discard XMapWindow(display, win)
+  if not windowed:
+    discard XSetInputFocus(display, win, RevertToParent, CurrentTime)
+
+  var windowWidth = attributes.width.cint
+  var windowHeight = attributes.height.cint
+
 
   var wmName = "boomer"
   var wmClass = "Boomer"
@@ -425,7 +440,11 @@ proc main() =
         Mouse(curr: pos, prev: pos)
     flashlight = Flashlight(
       isEnabled: false,
-      radius: 100.0'f32)
+      radius: 0.0'f32,
+      targetRadius: 100.0'f32)
+    laserEnabled = false
+
+
 
   let dt = 1.0'f32 / rate.float32
   var originWindow: Window
@@ -435,13 +454,7 @@ proc main() =
   var currentTexHeight = screenshot.image.height
 
   while not quitting:
-    # TODO(#78): Is there a better solution to keep the focus always on the window?
-    if not windowed:
-      discard XSetInputFocus(display, win, RevertToParent, CurrentTime);
-
-    var wa: XWindowAttributes
-    discard XGetWindowAttributes(display, win, addr wa)
-    glViewport(0, 0, wa.width, wa.height)
+    glViewport(0, 0, windowWidth, windowHeight)
 
     var xev: XEvent
     while XPending(display) > 0:
@@ -483,6 +496,14 @@ proc main() =
         if cast[Atom](xev.xclient.data.l[0]) == wmDeleteMessage:
           quitting = true
 
+      of ConfigureNotify:
+        windowWidth = xev.xconfigure.width
+        windowHeight = xev.xconfigure.height
+
+      of FocusOut:
+        if not windowed:
+          discard XSetInputFocus(display, win, RevertToParent, CurrentTime)
+
       of KeyPress:
         var key = XLookupKeysym(cast[PXKeyEvent](xev.addr), 0)
         case key
@@ -518,6 +539,9 @@ proc main() =
         of XK_f:
           if (xev.xkey.state and ControlMask) > 0.uint32:
             flashlight.isEnabled = not flashlight.isEnabled
+        of XK_l:
+          if (xev.xkey.state and ControlMask) > 0.uint32:
+            laserEnabled = not laserEnabled
         else:
           discard
       of KeyRelease:
@@ -543,12 +567,21 @@ proc main() =
       else:
           discard
 
-    camera.update(config, dt, mouse, vec2(wa.width.float32, wa.height.float32))
+    # Query real-time cursor position to eliminate queue latency
+    let latestMouse = getCursorPosition(display)
+    mouse.curr = latestMouse
+    if not mouse.drag:
+      mouse.prev = latestMouse
+
+    camera.update(config, dt, mouse, vec2(windowWidth.float32, windowHeight.float32))
     flashlight.update(dt)
 
     screenshot.image.draw(camera, shaderProgram, vao, texture,
-                          vec2(wa.width.float32, wa.height.float32),
-                          mouse, flashlight, locs)
+                          vec2(windowWidth.float32, windowHeight.float32),
+                          mouse, flashlight, locs, laserEnabled)
+
+
+
 
     glXSwapBuffers(display, win)
 

@@ -7,6 +7,7 @@ uniform vec2 windowSize;
 uniform float flShadow;
 uniform float flRadius;
 uniform float cameraScale;
+uniform bool laserEnabled;
 
 void main()
 {
@@ -16,5 +17,13 @@ void main()
     float feather = max(10.0, radius * 0.25); // 25% of radius is feathered, min 10px
     float shadowFactor = smoothstep(radius - feather, radius, dist) * flShadow;
     color = mix(texture(tex, texcoord), vec4(0.0, 0.0, 0.0, 1.0), shadowFactor);
+
+    if (laserEnabled) {
+        vec4 laserColor = vec4(1.0, 0.1, 0.1, 1.0); // Bright red
+        float laserRadius = 3.5; // Radius of core laser beam
+        float laserGlow = exp(-dist / laserRadius);
+        color = mix(color, laserColor, laserGlow);
+    }
 }
+
 
