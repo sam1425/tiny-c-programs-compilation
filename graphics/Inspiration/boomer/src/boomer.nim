@@ -15,6 +15,9 @@ import la
 import strutils
 import math
 import options
+import std/monotimes
+import std/times
+
 
 type Shader = tuple[path, content: string]
 
@@ -446,7 +449,7 @@ proc main() =
 
 
 
-  let dt = 1.0'f32 / rate.float32
+  var lastTime = getMonoTime()
   var originWindow: Window
   var revertToReturn: cint
   discard XGetInputFocus(display, addr originWindow, addr revertToReturn)
@@ -454,6 +457,10 @@ proc main() =
   var currentTexHeight = screenshot.image.height
 
   while not quitting:
+    let currentTime = getMonoTime()
+    let dt = min(0.1'f32, (currentTime - lastTime).inMicroseconds.float32 / 1_000_000.0'f32)
+    lastTime = currentTime
+
     glViewport(0, 0, windowWidth, windowHeight)
 
     var xev: XEvent

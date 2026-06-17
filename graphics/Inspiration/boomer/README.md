@@ -46,10 +46,11 @@ This will enable reloading the shaders with `Ctrl+R`. The shader files (`frag.gl
 | <kbd>q</kbd> or <kbd>ESC</kbd>            | Quit the application.                                         |
 | <kbd>r</kbd>                              | Reload configuration.                                         |
 | <kbd>Ctrl</kbd> + <kbd>r</kbd>            | Reload the shaders (only for Developer mode)                  |
-| <kbd>f</kbd>                              | Toggle flashlight effect.                                     |
+| <kbd>Ctrl</kbd> + <kbd>f</kbd>            | Toggle flashlight effect (with smooth expand & soft falloff). |
+| <kbd>Ctrl</kbd> + <kbd>l</kbd>            | Toggle laser pointer effect (glowing red dot).                |
 | Drag with left mouse button               | Move the image around.                                        |
 | Scroll wheel or <kbd>=</kbd>/<kbd>-</kbd> | Zoom in/out.                                                  |
-| <kbd>Ctrl</kbd> + Scroll wheel            | Change the radious of the flaslight.                          |
+| <kbd>Ctrl</kbd> + Scroll wheel            | Change the radius of the flashlight.                          |
 
 ## Configuration
 
