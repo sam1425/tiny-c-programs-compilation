@@ -54,6 +54,7 @@ proc newShader(shader: Shader, kind: GLenum): GLuint =
     echo "Error during shader compilation: ", shader.path, ". Log:"
     echo infoLog
     echo "------------------------------"
+    raise newException(ValueError, "Shader compilation failed: " & shader.path)
 
 proc newShaderProgram(vertex, fragment: Shader): GLuint =
   result = glCreateProgram()
@@ -76,6 +77,7 @@ proc newShaderProgram(vertex, fragment: Shader): GLuint =
   if not success.bool:
     glGetProgramInfoLog(result, 512, nil, infoLog)
     echo infoLog
+    raise newException(ValueError, "Shader linking failed")
 
   glUseProgram(result)
 
@@ -99,29 +101,44 @@ proc update(flashlight: var Flashlight, dt: float32) =
   else:
     flashlight.shadow = max(flashlight.shadow - 6.0 * dt, 0.0)
 
+type
+  UniformLocations = object
+    cameraPos: GLint
+    cameraScale: GLint
+    screenshotSize: GLint
+    windowSize: GLint
+    cursorPos: GLint
+    flShadow: GLint
+    flRadius: GLint
+
+proc getUniformLocations(shader: GLuint): UniformLocations =
+  result.cameraPos = glGetUniformLocation(shader, "cameraPos".cstring)
+  result.cameraScale = glGetUniformLocation(shader, "cameraScale".cstring)
+  result.screenshotSize = glGetUniformLocation(shader, "screenshotSize".cstring)
+  result.windowSize = glGetUniformLocation(shader, "windowSize".cstring)
+  result.cursorPos = glGetUniformLocation(shader, "cursorPos".cstring)
+  result.flShadow = glGetUniformLocation(shader, "flShadow".cstring)
+  result.flRadius = glGetUniformLocation(shader, "flRadius".cstring)
+
 proc draw(screenshot: PXImage, camera: Camera, shader, vao, texture: GLuint,
-          windowSize: Vec2f, mouse: Mouse, flashlight: Flashlight) =
+          windowSize: Vec2f, mouse: Mouse, flashlight: Flashlight,
+          locs: UniformLocations) =
   glClearColor(0.1, 0.1, 0.1, 1.0)
   glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
 
   glUseProgram(shader)
 
-  glUniform2f(glGetUniformLocation(shader, "cameraPos".cstring), camera.position[0], camera.position[1])
-  glUniform1f(glGetUniformLocation(shader, "cameraScale".cstring), camera.scale)
-  glUniform2f(glGetUniformLocation(shader, "screenshotSize".cstring),
-              screenshot.width.float32,
-              screenshot.height.float32)
-  glUniform2f(glGetUniformLocation(shader, "windowSize".cstring),
-              windowSize.x.float32,
-              windowSize.y.float32)
-  glUniform2f(glGetUniformLocation(shader, "cursorPos".cstring),
-              mouse.curr.x.float32,
-              mouse.curr.y.float32)
-  glUniform1f(glGetUniformLocation(shader, "flShadow".cstring), flashlight.shadow)
-  glUniform1f(glGetUniformLocation(shader, "flRadius".cstring), flashlight.radius)
+  glUniform2f(locs.cameraPos, camera.position[0], camera.position[1])
+  glUniform1f(locs.cameraScale, camera.scale)
+  glUniform2f(locs.screenshotSize, screenshot.width.float32, screenshot.height.float32)
+  glUniform2f(locs.windowSize, windowSize.x.float32, windowSize.y.float32)
+  glUniform2f(locs.cursorPos, mouse.curr.x.float32, mouse.curr.y.float32)
+  glUniform1f(locs.flShadow, flashlight.shadow)
+  glUniform1f(locs.flRadius, flashlight.radius)
 
   glBindVertexArray(vao)
   glDrawElements(GL_TRIANGLES, count = 6, GL_UNSIGNED_INT, indices = nil)
+
 
 proc getCursorPosition(display: PDisplay): Vec2f =
   var root, child: Window
@@ -196,63 +213,43 @@ proc main() =
     var i = 1
     while i <= paramCount():
       let arg = paramStr(i)
-
-      template asParam(paramVar: untyped, body: untyped) =
-        if i + 1 > paramCount():
-          echo "No value is provided for $#" % [arg]
-          usageQuit()
-        let paramVar = paramStr(i + 1)
-        body
-        i += 2
-
-      template asFlag(body: untyped) =
-        body
-        i += 1
-
-      template asOptionalParam(paramVar: untyped, body: untyped) =
-        let paramVar = block:
-          var resultVal = none(string)
-          if i + 1 <= paramCount():
-            let param = paramStr(i + 1)
-            if len(param) > 0 and param[0] != '-':
-              resultVal = some(param)
-          resultVal
-        body
-        if paramVar.isNone:
-          i += 1
-        else:
-          i += 2
-
       case arg
       of "-d", "--delay":
-        asParam(delayParam):
-          delaySec = parseFloat(delayParam)
-      of "-w", "--windowed":
-        asFlag():
-          windowed = true
-      of "-h", "--help":
-        asFlag():
+        if i + 1 > paramCount():
+          echo "No value is provided for ", arg
           usageQuit()
+        delaySec = parseFloat(paramStr(i + 1))
+        i += 2
+      of "-w", "--windowed":
+        windowed = true
+        i += 1
+      of "-h", "--help":
+        usageQuit()
       of "-V", "--version":
-        asFlag():
-          versionQuit()
+        versionQuit()
       of "--new-config":
-        asOptionalParam(configName):
-          let newConfigPath = configName.get(configFile)
-
-          createDir(newConfigPath.splitFile.dir)
-          if newConfigPath.fileExists:
-            stdout.write("File ", newConfigPath, " already exists. Replace it? [yn] ")
-            if stdin.readChar != 'y':
-              quit "Disaster prevented"
-
-          generateDefaultConfig(newConfigPath)
-          quit "Generated config at $#" % [newConfigPath]
+        var configName = none(string)
+        if i + 1 <= paramCount():
+          let nextArg = paramStr(i + 1)
+          if nextArg.len > 0 and nextArg[0] != '-':
+            configName = some(nextArg)
+        
+        let newConfigPath = configName.get(configFile)
+        createDir(newConfigPath.splitFile.dir)
+        if newConfigPath.fileExists:
+          stdout.write("File ", newConfigPath, " already exists. Replace it? [yn] ")
+          if stdin.readChar != 'y':
+            quit "Disaster prevented"
+        generateDefaultConfig(newConfigPath)
+        quit "Generated config at " & newConfigPath
       of "-c", "--config":
-        asParam(configParam):
-          configFile = configParam
+        if i + 1 > paramCount():
+          echo "No value is provided for ", arg
+          usageQuit()
+        configFile = paramStr(i + 1)
+        i += 2
       else:
-        echo "Unknown flag `$#`" % [arg]
+        echo "Unknown flag `", arg, "`"
         usageQuit()
   sleep(floor(delaySec * 1000).int)
 
@@ -281,6 +278,7 @@ proc main() =
 
   var screenConfig = XRRGetScreenInfo(display, DefaultRootWindow(display))
   let rate = XRRConfigCurrentRate(screenConfig)
+  XRRFreeScreenConfigInfo(screenConfig)
   echo "Screen rate: ", rate
 
   let screen = XDefaultScreen(display)
@@ -303,7 +301,6 @@ proc main() =
   var vi = glXChooseVisual(display, 0, addr attrs[0])
   if vi == nil:
     quit "No appropriate visual found"
-
 
   echo "Visual ", vi.visualid, " selected"
   var swa: XSetWindowAttributes
@@ -344,25 +341,25 @@ proc main() =
                           addr wmDeleteMessage, 1)
 
   var glc = glXCreateContext(display, vi, nil, GL_TRUE.cint)
+  discard XFree(vi)
   discard glXMakeCurrent(display, win, glc)
 
   loadExtensions()
 
   var shaderProgram = newShaderProgram(vertexShader, fragmentShader)
+  var locs = getUniformLocations(shaderProgram)
 
   var screenshot = newScreenshot(display, trackingWindow)
   defer: screenshot.destroy(display)
 
-  let w = screenshot.image.width.float32
-  let h = screenshot.image.height.float32
   var
     vao, vbo, ebo: GLuint
     vertices = [
       # Position                 Texture coords
-      [GLfloat    w,     0, 0.0, 1.0, 1.0], # Top right
-      [GLfloat    w,     h, 0.0, 1.0, 0.0], # Bottom right
-      [GLfloat    0,     h, 0.0, 0.0, 0.0], # Bottom left
-      [GLfloat    0,     0, 0.0, 0.0, 1.0]  # Top left
+      [GLfloat  1.0,   0.0, 0.0, 1.0, 1.0], # Top right
+      [GLfloat  1.0,   1.0, 0.0, 1.0, 0.0], # Bottom right
+      [GLfloat  0.0,   1.0, 0.0, 0.0, 0.0], # Bottom left
+      [GLfloat  0.0,   0.0, 0.0, 0.0, 1.0]  # Top left
     ]
     indices = [GLuint(0), 1, 3,
                       1,  2, 3]
@@ -421,20 +418,22 @@ proc main() =
 
   var
     quitting = false
-    camera = Camera(scale: 1.0)
+    camera = Camera(scale: 1.0'f32)
     mouse: Mouse =
       block:
         let pos = getCursorPosition(display)
         Mouse(curr: pos, prev: pos)
     flashlight = Flashlight(
       isEnabled: false,
-      radius: 100.0)
+      radius: 100.0'f32)
 
-
-  let dt = 1.0 / rate.float
+  let dt = 1.0'f32 / rate.float32
   var originWindow: Window
   var revertToReturn: cint
   discard XGetInputFocus(display, addr originWindow, addr revertToReturn)
+  var currentTexWidth = screenshot.image.width
+  var currentTexHeight = screenshot.image.height
+
   while not quitting:
     # TODO(#78): Is there a better solution to keep the focus always on the window?
     if not windowed:
@@ -452,14 +451,14 @@ proc main() =
         if (xev.xkey.state and ControlMask) > 0.uint32 and flashlight.isEnabled:
           flashlight.deltaRadius -= INITIAL_FL_DELTA_RADIUS
         else:
-          camera.deltaScale += config.scrollSpeed
+          camera.deltaScale += config.scroll_speed
           camera.scalePivot = mouse.curr
 
       proc scrollDown() =
         if (xev.xkey.state and ControlMask) > 0.uint32 and flashlight.isEnabled:
           flashlight.deltaRadius += INITIAL_FL_DELTA_RADIUS
         else:
-          camera.deltaScale -= config.scrollSpeed
+          camera.deltaScale -= config.scroll_speed
           camera.scalePivot = mouse.curr
 
       case xev.theType
@@ -476,7 +475,7 @@ proc main() =
           # delta is the distance the mouse traveled in a single
           # frame. To turn the velocity into units/second we need to
           # multiple it by FPS.
-          camera.velocity = delta * rate.float
+          camera.velocity = delta * rate.float32
 
         mouse.prev = mouse.curr
 
@@ -490,10 +489,10 @@ proc main() =
         of XK_EQUAL: scrollUp()
         of XK_MINUS: scrollDown()
         of XK_0:
-          camera.scale = 1.0
-          camera.deltaScale = 0.0
-          camera.position = vec2(0.0'f32, 0.0)
-          camera.velocity = vec2(0.0'f32, 0.0)
+          camera.scale = 1.0'f32
+          camera.deltaScale = 0.0'f32
+          camera.position = vec2(0.0'f32, 0.0'f32)
+          camera.velocity = vec2(0.0'f32, 0.0'f32)
         of XK_q, XK_Escape:
           quitting = true
         of XK_r:
@@ -510,27 +509,26 @@ proc main() =
                 let newShaderProgram = newShaderProgram(vertexShader, fragmentShader)
                 glDeleteProgram(shaderProgram)
                 shaderProgram = newShaderProgram
+                locs = getUniformLocations(shaderProgram)
                 echo "Shader program ID: ", shaderProgram
-              except GLerror:
+              except CatchableError:
                 echo "Could not reload the shaders"
               echo "------------------------------"
 
         of XK_f:
-          flashlight.isEnabled = true
-          #flashlight.isEnabled = not flashlight.isEnabled
+          if (xev.xkey.state and ControlMask) > 0.uint32:
+            flashlight.isEnabled = not flashlight.isEnabled
         else:
           discard
       of KeyRelease:
-        let key = XLookupKeysym(cast[PXKeyEvent](xev.addr), 0)
-        if key == XK_f:
-           flashlight.isEnabled = false
+        discard
 
       of ButtonPress:
         case xev.xbutton.button
         of Button1:
           mouse.prev = mouse.curr
           mouse.drag = true
-          camera.velocity = vec2(0.0, 0.0)
+          camera.velocity = vec2(0.0'f32, 0.0'f32)
         of Button4: scrollUp()
         of Button5: scrollDown()
         else:
@@ -543,50 +541,50 @@ proc main() =
         else:
           discard
       else:
-        discard
+          discard
 
-    camera.update(config, dt, mouse, screenshot.image,
-                  vec2(wa.width.float32, wa.height.float32))
+    camera.update(config, dt, mouse, vec2(wa.width.float32, wa.height.float32))
     flashlight.update(dt)
 
     screenshot.image.draw(camera, shaderProgram, vao, texture,
                           vec2(wa.width.float32, wa.height.float32),
-                          mouse, flashlight)
+                          mouse, flashlight, locs)
 
     glXSwapBuffers(display, win)
-    glFinish()
 
     when defined(live):
       screenshot.refresh(display, trackingWindow)
-      # TODO(#90): don't update the vbo on screenshot refresh
-      # I'm pretty sure we can avoid that if we make independent from
-      # the size of the window as it was in the beginning. (I simply did
-      # not expect this use case back then Kappa)
-      var
-        w = screenshot.image.width.float32
-        h = screenshot.image.height.float32
-        vertices = [
-          # Position                 Texture coords
-          [GLfloat    w,     0, 0.0, 1.0, 1.0], # Top right
-          [GLfloat    w,     h, 0.0, 1.0, 0.0], # Bottom right
-          [GLfloat    0,     h, 0.0, 0.0, 0.0], # Bottom left
-          [GLfloat    0,     0, 0.0, 0.0, 1.0]  # Top left
-        ]
-        indices = [GLuint(0), 1, 3,
-                   1,  2, 3]
-      glBindBuffer(GL_ARRAY_BUFFER, vbo)
-      glBufferData(GL_ARRAY_BUFFER, size = GLsizeiptr(sizeof(vertices)),
-                   addr vertices, GL_STATIC_DRAW)
-      glTexImage2D(GL_TEXTURE_2D,
-                   0,
-                   GL_RGB.GLint,
-                   screenshot.image.width,
-                   screenshot.image.height,
-                   0,
-                   # TODO(#13): the texture format is hardcoded
-                   GL_BGRA,
-                   GL_UNSIGNED_BYTE,
-                   screenshot.image.data)
+      if screenshot.image.width != currentTexWidth or
+         screenshot.image.height != currentTexHeight:
+        currentTexWidth = screenshot.image.width
+        currentTexHeight = screenshot.image.height
+        glTexImage2D(GL_TEXTURE_2D,
+                     0,
+                     GL_RGB.GLint,
+                     currentTexWidth,
+                     currentTexHeight,
+                     0,
+                     GL_BGRA,
+                     GL_UNSIGNED_BYTE,
+                     screenshot.image.data)
+        glGenerateMipmap(GL_TEXTURE_2D)
+      else:
+        glTexSubImage2D(GL_TEXTURE_2D,
+                        0,
+                        0, 0,
+                        currentTexWidth,
+                        currentTexHeight,
+                        GL_BGRA,
+                        GL_UNSIGNED_BYTE,
+                        screenshot.image.data)
+
+  # Cleanup OpenGL and X11 resources
+  glDeleteTextures(1, addr texture)
+  glDeleteProgram(shaderProgram)
+  discard glXMakeCurrent(display, None, nil)
+  glXDestroyContext(display, glc)
+  discard XDestroyWindow(display, win)
+
   discard XSetInputFocus(display, originWindow, RevertToParent, CurrentTime);
   discard XSync(display, 0)
 

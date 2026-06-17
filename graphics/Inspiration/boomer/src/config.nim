@@ -1,16 +1,16 @@
 import strutils
 
 type Config* = object
-  min_scale*: float
-  scroll_speed*: float
-  drag_friction*: float
-  scale_friction*: float
+  min_scale*: float32
+  scroll_speed*: float32
+  drag_friction*: float32
+  scale_friction*: float32
 
 const defaultConfig* = Config(
-  min_scale: 0.01,
-  scroll_speed: 1.5,
-  drag_friction: 6.0,
-  scale_friction: 4.0,
+  min_scale: 0.01'f32,
+  scroll_speed: 1.0'f32,
+  drag_friction: 6.0'f32,
+  scale_friction: 4.0'f32,
 )
 
 proc loadConfig*(filePath: string): Config =
@@ -20,17 +20,19 @@ proc loadConfig*(filePath: string): Config =
     if line.len == 0 or line[0] == '#':
       continue
     let pair = line.split('=', 1)
+    if pair.len < 2:
+      continue
     let key = pair[0].strip
     let value = pair[1].strip
     case key
     of "min_scale":
-      result.min_scale = parseFloat(value)
+      result.min_scale = parseFloat(value).float32
     of "scroll_speed":
-      result.scroll_speed = parseFloat(value)
+      result.scroll_speed = parseFloat(value).float32
     of "drag_friction":
-      result.drag_friction = parseFloat(value)
+      result.drag_friction = parseFloat(value).float32
     of "scale_friction":
-      result.scale_friction = parseFloat(value)
+      result.scale_friction = parseFloat(value).float32
     else:
       quit "Unknown config key `$#`" % [key]
 

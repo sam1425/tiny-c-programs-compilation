@@ -11,13 +11,13 @@ when defined(mitshm):
       SHMCTL = 31
       SHMDT = 67
 
-    proc syscall*(n: Number, a1: any): clong {.inline.} =
+    proc syscall*(n: Number, a1: auto): clong {.inline.} =
       {.emit: """asm volatile(
         "syscall" : "=a"(`result`)
                   : "a"((long)`n`), "D"((long)`a1`)
                   : "memory", "r11", "rcx", "cc");""".}
 
-    proc syscall*(n: Number, a1, a2, a3: any): clong {.inline.} =
+    proc syscall*(n: Number, a1, a2, a3: auto): clong {.inline.} =
       {.emit: """asm volatile(
         "syscall" : "=a"(`result`)
                   : "a"((long)`n`), "D"((long)`a1`), "S"((long)`a2`),
@@ -42,7 +42,7 @@ proc newScreenshot*(display: PDisplay, window: Window): Screenshot =
 
   when defined(mitshm):
     result.shminfo = cast[PXShmSegmentInfo](
-      allocShared(sizeof(TXShmSegmentInfo)))
+      allocShared(sizeof(XShmSegmentInfo)))
     let screen = DefaultScreen(display)
     result.image = XShmCreateImage(
       display,
@@ -90,54 +90,38 @@ proc destroy*(screenshot: Screenshot, display: PDisplay) =
   else:
     discard XDestroyImage(screenshot.image)
 
-# TODO(#92): there is too much X11 error logging when the tracked live update window is resized
 proc refresh*(screenshot: var Screenshot, display: PDisplay, window: Window) =
   var attributes: XWindowAttributes
   discard XGetWindowAttributes(display, window, addr attributes)
 
-  when defined(mitshm):
-    if XShmGetImage(display,
-                    window, screenshot.image,
-                    0.cint, 0.cint,
-                    AllPlanes) == 0 or
-       attributes.width != screenshot.image.width or
-       attributes.height != screenshot.image.height:
-      screenshot.destroy(display)
-      screenshot = newScreenshot(display, window)
+  if attributes.width != screenshot.image.width or
+     attributes.height != screenshot.image.height:
+    screenshot.destroy(display)
+    screenshot = newScreenshot(display, window)
   else:
-    let refreshedImage = XGetSubImage(
-      display, window,
-      0, 0,
-      screenshot.image.width.cuint,
-      screenshot.image.height.cuint,
-      AllPlanes,
-      ZPixmap,
-      screenshot.image,
-      0, 0)
-    if refreshedImage == nil or
-       refreshedImage.width != attributes.width or
-       refreshedImage.height != attributes.height:
-      let newImage = XGetImage(
+    when defined(mitshm):
+      if XShmGetImage(display, window, screenshot.image, 0.cint, 0.cint, AllPlanes) == 0:
+        screenshot.destroy(display)
+        screenshot = newScreenshot(display, window)
+    else:
+      let refreshedImage = XGetSubImage(
         display, window,
         0, 0,
-        attributes.width.cuint,
-        attributes.height.cuint,
+        screenshot.image.width.cuint,
+        screenshot.image.height.cuint,
         AllPlanes,
-        ZPixmap)
+        ZPixmap,
+        screenshot.image,
+        0, 0)
+      if refreshedImage == nil:
+        let newImage = XGetImage(
+          display, window,
+          0, 0,
+          attributes.width.cuint,
+          attributes.height.cuint,
+          AllPlanes,
+          ZPixmap)
+        if newImage != nil:
+          discard XDestroyImage(screenshot.image)
+          screenshot.image = newImage
 
-      if newImage != nil:
-        discard XDestroyImage(screenshot.image)
-        screenshot.image = newImage
-    else:
-      screenshot.image = refreshedImage
-
-proc saveToPPM*(image: PXImage, filePath: string) =
-  var f = open(filePath, fmWrite)
-  defer: f.close
-  writeLine(f, "P6")
-  writeLine(f, image.width, " ", image.height)
-  writeLine(f, 255)
-  for i in 0..<(image.width * image.height):
-    f.write(image.data[i * 4 + 2])
-    f.write(image.data[i * 4 + 1])
-    f.write(image.data[i * 4 + 0])
