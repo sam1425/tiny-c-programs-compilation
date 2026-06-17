@@ -18,8 +18,14 @@ int main(int argc, char *argv[])
     printf("Usage: sleep <seconds>\n");
     return 1;
   }
+
+
   char *seconds_raw = argv[1];
   long seconds = atol(seconds_raw);
+  if (seconds == 0){
+      printf("NAN or 0\n");
+      return -1;
+  }
 
   printf("sleeping for %d seconds \n");
   sleep(seconds);
